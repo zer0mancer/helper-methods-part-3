@@ -1,6 +1,10 @@
 require "rails_helper"
 
 describe "The /movies page" do
+  before do
+    sign_in_user if user_model_exists?
+  end
+
   it "can be visited", points: 1 do
     visit "/movies"
 
@@ -14,9 +18,27 @@ describe "The /movies page" do
     expect(page).to have_link('Add a new movie', href: "/movies/new"),
       "Expected /movies to have an 'Add a new movie' link to '/movies/new'."
   end
+
+  it "has a bootstrap navbar", points: 1 do
+    visit "/movies"
+
+    expect(page).to have_selector("nav[class*='navbar']"),
+    "Expected /movies to have a bootstrap navbar <nav> element with class='navbar'."
+  end
+
+  it "has margin top spacing with a bootstrap container class", points: 1 do
+    visit "/movies"
+
+    expect(page).to have_selector("div[class='container mt-3']"),
+    "Expected /movies to have a <div class='container mt-3'> bootstrap container for adding margin top spacing."
+  end
 end
 
 describe "The /movies/new page" do
+  before do
+    sign_in_user if user_model_exists?
+  end
+
   it "can be visited", points: 1 do
     visit "/movies/new"
 
@@ -31,14 +53,21 @@ describe "The /movies/new page" do
       "Expected /movies/new to have a form with action='/movies'."
   end
 
-  it "has a hidden authenticity token input", points: 2 do
+  it "has a form that creates a movie record", point: 1 do
+    old_movies_count = Movie.count
     visit "/movies/new"
 
-    expect(page).to have_selector("input[name='authenticity_token']", visible: false),
-      "Expected the new movie form to have an input field of type='hidden' and name='authenticity_token'."
+    fill_in "Title", with: "My test movie"
+    fill_in "Description", with: "description"
+    click_button "Create Movie"
+
+    new_movies_count = Movie.count
+    
+    expect(old_movies_count).to be < new_movies_count,
+      "Expected 'Create Movie' form on /movies/new to successfully add a Movie record to the database."
   end
 
-  it "creates a movie successfully", point: 1 do
+  it "displays a success notice flash message after creating movie", point: 1 do
     visit "/movies/new"
 
     fill_in "Title", with: "My test movie"
@@ -46,12 +75,16 @@ describe "The /movies/new page" do
     click_button "Create Movie"
 
     expect(page).to have_content("Movie created successfully."),
-      "Expected to fill in the new movie form, click 'Create Movie', and be redirected to the movie index with a success notice"
+      "Expected to see the notice flash message 'Movie created successfully' after filling in and submitting the /movies/new form."
   end
 end
 
 describe "The movie details page" do
   let(:movie) { Movie.create(title: "My title", description: "My description") }
+
+  before do
+    sign_in_user if user_model_exists?
+  end
 
   it "can be visited", points: 1 do
     visit "/movies/#{movie.id}"
@@ -60,16 +93,34 @@ describe "The movie details page" do
       "Expected to visit /movies/ID successfully."
   end
 
-  it "has a link to delete the movie with a DELETE request", points: 2 do
+  it "shows the movie on a bootstrap card", points: 2 do
     visit "/movies/#{movie.id}"
 
-    expect(page).to have_selector("a[href='/movies/#{movie.id}'][data-turbo-method='delete']", text: 'Delete movie'),
-      "Expected /movies/ID to have 'Delete movie' link with the proper data-turbo-method='delete'."
+    expect(page).to have_selector("div[class='card']"),
+      "Expected /movies/ID to have a <div class='card'> element to display the movie."
+  end
+
+  it "has a Font Awesome trash can icon to delete the movie", points: 2 do
+    visit "/movies/#{movie.id}"
+
+    expect(page).to have_selector("i[class='fa-regular fa-trash-can']"),
+      "Expected /movies/ID to have a Font Awesome trash can icon on the card using the element <i class='fa-regular fa-trash-can'></i>."
+  end
+
+  it "deletes the movie with a DELETE request", points: 2 do
+    visit "/movies/#{movie.id}"
+
+    expect(page).to have_selector("a[href='/movies/#{movie.id}'][data-turbo-method='delete']"),
+      "Expected /movies/ID to have 'Delete Movie' link with the proper data-turbo-method='delete'."
   end
 end
 
 describe "The movie edit page" do
   let(:movie) { Movie.create(title: "My title", description: "My description") }
+
+  before do
+    sign_in_user if user_model_exists?
+  end
 
   it "can be visited", points: 1 do
     visit "/movies/#{movie.id}/edit"
@@ -91,4 +142,42 @@ describe "The movie edit page" do
     expect(page).to have_selector("input[name='_method'][value='patch']", visible: false),
       "Expected the edit movie form to have an input field of type='hidden' with name='_method' and value='patch'."
   end
+end
+
+describe "User authentication with the Devise gem" do
+  it "requires sign in before any action with the Devise `before_action :authenticate_user!` method", points: 2 do
+    visit "/movies/new"
+    current_url = page.current_path
+
+    expect(current_url).to eq(new_user_session_path),
+      "Expected `before_action :authenticate_user!` in `ApplicationController` to redirect guest to /users/sign_in before visiting another page."
+  end
+
+  it "allows a user to sign up", points: 2 do
+    old_users_count = User.count
+    visit new_user_registration_path
+
+    fill_in "Email", with: "user@example.com"
+    fill_in "Password", with: "password"
+    fill_in "Password confirmation", with: "password"
+    click_button "Sign up"
+
+    new_users_count = User.count
+
+    expect(old_users_count).to be < new_users_count,
+      "Expected 'Sign up' form on /users/sign_up to successfully add a User record to the database."
+  end
+end
+
+def sign_in_user
+  user = User.create(email: "alice@example.com", password: "password")
+  visit new_user_session_path
+
+  fill_in "Email", with: user.email
+  fill_in "Password", with: user.password
+  click_button "Log in"
+end
+
+def user_model_exists?
+  Object.const_defined?("User")
 end
